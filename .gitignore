@@ -1,0 +1,14 @@
+# Secrets / local state — never commit
+config.yaml
+.env
+*.log
+
+# OpenD binary (large, platform-specific; see OPEND_SETUP.md)
+/opend/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
