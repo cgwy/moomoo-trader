@@ -1,0 +1,40 @@
+# Copy to config.yaml and edit. config.yaml is gitignored — never commit it.
+opend:
+  host: "127.0.0.1"
+  port: 11111
+
+trade:
+  # SIMULATE = paper trading. REAL = real money (requires extra typed
+  # confirmation at startup AND is refused unless you explicitly enable it).
+  trade_env: "SIMULATE"
+  # Shares/contracts per order when you confirm a signal.
+  default_qty: 1
+  # Trade password is NEVER stored in this file.
+  # Set it only via the MOOMOO_TRADE_PWD environment variable.
+
+# futu-api US market symbol format: US.<ticker>
+symbols:
+  - US.VOO
+  - US.SOXX
+  - US.AMZN
+  - US.GOOGL
+  - US.MSFT
+
+strategy:
+  use_ma_cross: true
+  ma_fast: 5
+  ma_slow: 20
+  use_rsi: true
+  rsi_period: 14
+  rsi_overbought: 70
+  rsi_oversold: 30
+  # Signals are detected on the last CLOSED daily bar only (no repainting).
+
+scan:
+  # Minutes between full watchlist scans.
+  poll_interval_minutes: 60
+  # How far back to pull daily K-lines for indicator warmup.
+  history_days: 120
+
+notify:
+  log_file: "signals.log"
