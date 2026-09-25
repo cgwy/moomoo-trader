@@ -1,18 +1,28 @@
 # moomoo-trader
 
-Signal scanner on the moomoo/Futu OpenAPI. It scans a watchlist of US tickers,
-detects **MA golden/death cross** and **RSI zone-entry** signals on daily bars,
-and prints/logs a ticket for each signal.
+Signal scanner for a watchlist of US tickers. It detects **MA golden/death
+cross** and **RSI zone-entry** signals on daily bars, and prints/logs a ticket
+for each signal.
 
 **Read-only by design: this program cannot place orders.** There is no trading
 code in it at all — no order API calls, no trade password, no paper-trading
 mode. It finds opportunities; what you do with a ticket (e.g. placing an
 order yourself in the moomoo app) happens entirely outside this program.
 
+## Data source
+
+Daily bars come from **Yahoo Finance** by default — free, no login, no API
+key, no moomoo credential needed. (Yahoo symbols are derived from the
+`US.`-prefixed tickers in the config.)
+
+If you prefer moomoo's own feed, set `data_source: "opend"` and run your own
+logged-in OpenD (see `OPEND_SETUP.md`) — your credential never leaves your
+machine.
+
 ## How it works
 
 ```
-OpenD (moomoo gateway, :11111) ──K-lines──▶ bot scans watchlist
+Yahoo Finance (or your OpenD) ──daily bars──▶ bot scans watchlist
                                             ──▶ signal ticket printed + logged
 ```
 
@@ -25,32 +35,27 @@ OpenD (moomoo gateway, :11111) ──K-lines──▶ bot scans watchlist
 
 ## Setup
 
-### 1. moomoo account + API access
-
-In the moomoo app: **Me → Settings → OpenAPI**, complete the questionnaire
-assessment and agreement confirmation (required once).
-
-### 2. OpenD
-
-Full steps: [`OPEND_SETUP.md`](OPEND_SETUP.md). Short version:
-
-1. Download: `https://www.moomoo.com/download/fetch-lasted-link?name=opend-ubuntu`
-   (use a browser User-Agent — plain curl gets a 403).
-2. Extract, `cd` into the versioned dir, run `./OpenD`.
-3. Log in at the `Please enter account` / `Please enter password` prompt
-   (moomoo ID, phone, or email). First login may need the app for verification.
-4. Leave it running — the bot connects to `127.0.0.1:11111`.
-
-### 3. Bot
+With the default `data_source: "yahoo"` there is no account setup at all:
 
 ```bash
 git clone <this-repo> && cd moomoo-trader
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp config.example.yaml config.yaml   # edit symbols / params
-.venv/bin/python -m bot.main --dry-run   # sanity check, no OpenD needed
-.venv/bin/python -m bot.main --once      # one live scan (needs logged-in OpenD)
+.venv/bin/python -m bot.main --dry-run   # sanity check, synthetic data
+.venv/bin/python -m bot.main --once      # one live scan (Yahoo, no login)
 .venv/bin/python -m bot.main             # loop every poll_interval_minutes
 ```
+
+### Optional: moomoo OpenD as the data source
+
+If you set `data_source: "opend"`:
+
+1. In the moomoo app: **Me → Settings → OpenAPI**, complete the questionnaire
+   assessment and agreement confirmation (required once).
+2. OpenD: full steps in [`OPEND_SETUP.md`](OPEND_SETUP.md). Short version —
+   download from `https://www.moomoo.com/download/fetch-lasted-link?name=opend-ubuntu`
+   (use a browser User-Agent — plain curl gets a 403), extract, run `./OpenD`,
+   log in at the prompt, leave it running on `127.0.0.1:11111`.
 
 ## What it cannot do
 
@@ -81,7 +86,8 @@ safety.
 bot/
   main.py      scan loop, CLI (--once/--dry-run); prints tickets only
   signals.py   pure MA/RSI logic + closed-bar handling (unit-tested)
-  data.py      K-line fetch via futu-api QuoteContext (quotes only)
+  data.py      K-line fetch via futu-api QuoteContext (for data_source=opend)
+  yahoo.py     daily bars via Yahoo Finance chart API (default, no login)
   notify.py    ticket formatting + JSON-lines signal log
   config.py    YAML config loading
 tests/test_signals.py
@@ -94,12 +100,14 @@ Source + config template are meant to be portable:
 
 1. `git clone` this repo on the new machine.
 2. `pip install -r requirements.txt` (Python 3.10+).
-3. Download OpenD for that platform from
-   https://www.moomoo.com/download/OpenAPI, run it, log in once.
-4. Copy `config.example.yaml` → `config.yaml`,
+3. Copy `config.example.yaml` → `config.yaml`,
    run `python -m bot.main --dry-run` to verify, then scan live.
+   (Yahoo source needs nothing else. For `data_source: "opend"`, install
+   OpenD for that platform from https://www.moomoo.com/download/OpenAPI,
+   run it, and log in yourself.)
 
-## Status / not yet verified
+## Status
 
-Live quote/K-line fetching needs a **logged-in** OpenD, which needs your real
+Yahoo-source live scanning is verified working (no login involved). The
+`opend` source still needs your own logged-in OpenD, which needs your real
 moomoo credentials — deliberately not done here.

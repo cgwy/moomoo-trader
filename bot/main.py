@@ -26,6 +26,7 @@ from .config import load_config
 from .data import QuoteClient
 from .notify import emit, format_ticket
 from .signals import detect_signals, get_closed_bars
+from .yahoo import YahooClient
 
 
 # ------------------------------------------------------------------ dry run
@@ -77,7 +78,18 @@ def dry_run() -> int:
 
 # -------------------------------------------------------------------- live
 
-def scan_once(cfg: dict, quotes: QuoteClient) -> int:
+def make_client(cfg):
+    """Pick the market-data source. Yahoo needs nothing; OpenD needs a
+    logged-in OpenD on host:port (your own machine, your own login)."""
+    if cfg["data_source"] == "yahoo":
+        print("data source: Yahoo Finance (no login needed)")
+        return YahooClient()
+    opend = cfg["opend"]
+    print(f"data source: OpenD at {opend['host']}:{opend['port']} ...")
+    return QuoteClient(opend["host"], opend["port"])
+
+
+def scan_once(cfg: dict, quotes) -> int:
     """One pass over the watchlist. Returns number of signals found."""
     n_signals = 0
     strategy = cfg["strategy"]
@@ -98,7 +110,7 @@ def scan_once(cfg: dict, quotes: QuoteClient) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        description="Signal scanner (moomoo OpenAPI). Read-only: prints signal tickets, never trades.")
+        description="Signal scanner. Read-only: prints signal tickets, never trades.")
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--once", action="store_true", help="single scan pass, then exit")
     ap.add_argument("--dry-run", action="store_true",
@@ -109,10 +121,7 @@ def main(argv: list[str] | None = None) -> int:
         return dry_run()
 
     cfg = load_config(args.config)
-    opend = cfg["opend"]
-
-    print(f"Connecting to OpenD at {opend['host']}:{opend['port']} ...")
-    quotes = QuoteClient(opend["host"], opend["port"])
+    quotes = make_client(cfg)
     try:
         while True:
             n = scan_once(cfg, quotes)

@@ -1,4 +1,11 @@
 # Copy to config.yaml and edit. config.yaml is gitignored — never commit it.
+
+# Where daily bars come from:
+#   "yahoo" — Yahoo Finance chart API. Free, no login, no key. (default)
+#   "opend" — your own logged-in OpenD (moomoo gateway). Needs the moomoo app
+#             API questionnaire done once, and OpenD running on this machine.
+data_source: "yahoo"
+
 opend:
   host: "127.0.0.1"
   port: 11111

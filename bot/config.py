@@ -5,6 +5,8 @@ from __future__ import annotations
 import yaml
 
 DEFAULTS = {
+    # "yahoo" = Yahoo Finance chart API (no login). "opend" = local OpenD.
+    "data_source": "yahoo",
     "opend": {"host": "127.0.0.1", "port": 11111},
     "symbols": [],
     "strategy": {
@@ -35,6 +37,10 @@ def load_config(path: str = "config.yaml") -> dict:
     with open(path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
     cfg = _merge(DEFAULTS, raw)
+    src = str(cfg.get("data_source", "yahoo")).lower()
+    if src not in ("yahoo", "opend"):
+        raise ValueError(f"data_source must be 'yahoo' or 'opend', got {src!r}")
+    cfg["data_source"] = src
     if not cfg["symbols"]:
         raise ValueError("config.symbols is empty — add tickers like US.VOO")
     return cfg
