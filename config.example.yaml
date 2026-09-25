@@ -3,15 +3,6 @@ opend:
   host: "127.0.0.1"
   port: 11111
 
-trade:
-  # SIMULATE = paper trading. REAL = real money (requires extra typed
-  # confirmation at startup AND is refused unless you explicitly enable it).
-  trade_env: "SIMULATE"
-  # Shares/contracts per order when you confirm a signal.
-  default_qty: 1
-  # Trade password is NEVER stored in this file.
-  # Set it only via the MOOMOO_TRADE_PWD environment variable.
-
 # futu-api US market symbol format: US.<ticker>
 symbols:
   - US.VOO

@@ -1,13 +1,11 @@
-"""Config loading. Trade password comes ONLY from the MOOMOO_TRADE_PWD env var."""
+"""Config loading."""
 
 from __future__ import annotations
 
-import os
 import yaml
 
 DEFAULTS = {
     "opend": {"host": "127.0.0.1", "port": 11111},
-    "trade": {"trade_env": "SIMULATE", "default_qty": 1},
     "symbols": [],
     "strategy": {
         "use_ma_cross": True,
@@ -37,12 +35,6 @@ def load_config(path: str = "config.yaml") -> dict:
     with open(path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
     cfg = _merge(DEFAULTS, raw)
-    env = str(cfg["trade"].get("trade_env", "SIMULATE")).upper()
-    if env not in ("SIMULATE", "REAL"):
-        raise ValueError(f"trade.trade_env must be SIMULATE or REAL, got {env!r}")
-    cfg["trade"]["trade_env"] = env
     if not cfg["symbols"]:
         raise ValueError("config.symbols is empty — add tickers like US.VOO")
-    # Never read the trade password from the file. Env var only.
-    cfg["trade"]["password"] = os.environ.get("MOOMOO_TRADE_PWD")
     return cfg

@@ -1,4 +1,9 @@
-"""Signal tickets: pretty console print + JSON-lines log."""
+"""Signal tickets: pretty console print + JSON-lines log.
+
+Tickets are informational only: what fired, where, and the indicator values.
+There is no order suggestion, quantity, or price target — this program cannot
+trade and does not tell you how to trade.
+"""
 
 from __future__ import annotations
 
@@ -15,11 +20,7 @@ TYPE_LABEL = {
 DIRECTION_EMOJI = {"bullish": "🟢", "bearish": "🔴"}
 
 
-def suggested_side(signal: dict) -> str:
-    return "BUY" if signal["direction"] == "bullish" else "SELL"
-
-
-def format_ticket(signal: dict, qty: int = 1, limit_price: float | None = None) -> str:
+def format_ticket(signal: dict) -> str:
     d = signal.get("details", {})
     lines = [
         "┌" + "─" * 58 + "┐",
@@ -36,21 +37,15 @@ def format_ticket(signal: dict, qty: int = 1, limit_price: float | None = None) 
                      f" (prev {d.get('ma_fast_prev')} / {d.get('ma_slow_prev')})".ljust(59) + "│")
     if signal["type"].startswith("rsi_"):
         lines.append(f"│ RSI({d.get('rsi_period')}): {d.get('rsi')} (prev {d.get('rsi_prev')})".ljust(59) + "│")
-    if limit_price is not None:
-        lines.append(f"│ suggested : {suggested_side(signal)} {qty} x {signal['symbol']} "
-                     f"limit @ {limit_price:.2f}".ljust(59) + "│")
     lines.append("└" + "─" * 58 + "┘")
     return "\n".join(lines)
 
 
-def emit(signal: dict, log_file: str = "signals.log", qty: int = 1,
-         limit_price: float | None = None) -> None:
+def emit(signal: dict, log_file: str = "signals.log") -> None:
     """Print the ticket and append a JSON line to the log."""
-    print(format_ticket(signal, qty=qty, limit_price=limit_price))
+    print(format_ticket(signal))
     record = {
         "ts": datetime.now(timezone.utc).isoformat(),
-        "qty": qty,
-        "limit_price": limit_price,
         **signal,
     }
     with open(log_file, "a", encoding="utf-8") as f:

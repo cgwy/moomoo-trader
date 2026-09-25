@@ -1,16 +1,19 @@
 # moomoo-trader
 
-Semi-automatic trading assistant on the moomoo/Futu OpenAPI. It scans a
-watchlist of US tickers, detects **MA golden/death cross** and **RSI zone-entry**
-signals on daily bars, prints a ticket for each signal — and **you** type
-`confirm` before anything is ordered. Nothing trades by itself.
+Signal scanner on the moomoo/Futu OpenAPI. It scans a watchlist of US tickers,
+detects **MA golden/death cross** and **RSI zone-entry** signals on daily bars,
+and prints/logs a ticket for each signal.
+
+**Read-only by design: this program cannot place orders.** There is no trading
+code in it at all — no order API calls, no trade password, no paper-trading
+mode. It finds opportunities; what you do with a ticket (e.g. placing an
+order yourself in the moomoo app) happens entirely outside this program.
 
 ## How it works
 
 ```
 OpenD (moomoo gateway, :11111) ──K-lines──▶ bot scans watchlist
                                             ──▶ signal ticket printed + logged
-                                            ──▶ you type 'confirm' ──▶ limit order
 ```
 
 * Signals fire on the **last closed daily bar only** — no repainting.
@@ -18,7 +21,7 @@ OpenD (moomoo gateway, :11111) ──K-lines──▶ bot scans watchlist
 * RSI(14): bullish when it crosses **down** through 30 (enters oversold),
   bearish when it crosses **up** through 70 (enters overbought).
 * Both strategies can fire on the same bar (even in opposite directions);
-  each ticket is confirmed separately — you decide.
+  each gets its own ticket.
 
 ## Setup
 
@@ -44,24 +47,22 @@ Full steps: [`OPEND_SETUP.md`](OPEND_SETUP.md). Short version:
 git clone <this-repo> && cd moomoo-trader
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp config.example.yaml config.yaml   # edit symbols / params
-export MOOMOO_TRADE_PWD='...'        # trade password: env var ONLY, never in files
 .venv/bin/python -m bot.main --dry-run   # sanity check, no OpenD needed
 .venv/bin/python -m bot.main --once      # one live scan (needs logged-in OpenD)
 .venv/bin/python -m bot.main             # loop every poll_interval_minutes
 ```
 
-## Safety model
+## What it cannot do
 
-* Default `trade_env: SIMULATE` — paper trading only.
-* Every order needs a typed `confirm` at its own prompt. Anything else skips.
-* `trade_env: REAL` additionally requires typing `TRADE REAL` at startup, and
-  `Executor` refuses REAL orders without that explicit arming.
-* Trade password only via `MOOMOO_TRADE_PWD`. `config.yaml` is gitignored.
+* Place, modify, or cancel orders — the code to do so does not exist here.
+* Touch your positions, account balance, or trade password (it never asks for one).
+* Trade by itself, on a schedule or otherwise. The loop only re-scans and prints.
 
 ## Configuration
 
-`config.yaml` (copy of `config.example.yaml`): OpenD host/port, trade env,
-watchlist (`US.`-prefixed tickers), strategy params, scan interval, log file.
+`config.yaml` (copy of `config.example.yaml`): OpenD host/port, watchlist
+(`US.`-prefixed tickers), strategy params, scan interval, log file.
+`config.yaml` is gitignored — never commit it.
 
 ## Tests
 
@@ -78,12 +79,11 @@ safety.
 
 ```
 bot/
-  main.py      scan loop, CLI (--once/--dry-run), confirmation flow
+  main.py      scan loop, CLI (--once/--dry-run); prints tickets only
   signals.py   pure MA/RSI logic + closed-bar handling (unit-tested)
-  data.py      K-line fetch via futu-api QuoteContext
-  executor.py  order placement with REAL-money guards
+  data.py      K-line fetch via futu-api QuoteContext (quotes only)
   notify.py    ticket formatting + JSON-lines signal log
-  config.py    YAML config; password from env only
+  config.py    YAML config loading
 tests/test_signals.py
 config.example.yaml   OPEND_SETUP.md   README.md
 ```
@@ -96,11 +96,10 @@ Source + config template are meant to be portable:
 2. `pip install -r requirements.txt` (Python 3.10+).
 3. Download OpenD for that platform from
    https://www.moomoo.com/download/OpenAPI, run it, log in once.
-4. Copy `config.example.yaml` → `config.yaml`, set `MOOMOO_TRADE_PWD`,
-   run `python -m bot.main --dry-run` to verify, then go live.
+4. Copy `config.example.yaml` → `config.yaml`,
+   run `python -m bot.main --dry-run` to verify, then scan live.
 
 ## Status / not yet verified
 
-Live quote/K-line fetching and order placement need a **logged-in** OpenD,
-which needs your real moomoo credentials — deliberately not done here.
-First live run: use `--once` with `SIMULATE` and watch the tickets.
+Live quote/K-line fetching needs a **logged-in** OpenD, which needs your real
+moomoo credentials — deliberately not done here.

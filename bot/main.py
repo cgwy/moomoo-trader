@@ -1,16 +1,18 @@
-"""Semi-auto trading assistant: scan watchlist -> signal ticket -> YOU confirm -> order.
+"""Signal scanner: watchlist -> MA/RSI signal tickets. Read-only, never trades.
+
+This program only READS market data and prints/logs signal tickets. It has no
+order-placement code at all — discovering opportunities is all it does.
+What you do with a ticket (e.g. placing an order by hand in the moomoo app)
+is entirely up to you, outside this program.
 
 Usage:
     python -m bot.main [--config config.yaml] [--once] [--dry-run]
 
 * --once     : single scan pass, then exit (good for cron).
 * --dry-run  : no OpenD needed. Runs signal logic on synthetic data and
-               prints a sample ticket. Exercises the whole pipeline except
-               the live connection and order placement.
+               prints sample tickets. Exercises the pipeline except the
+               live connection.
 * (no flags): loop forever, sleeping scan.poll_interval_minutes between scans.
-
-Every order requires typing 'confirm'. Default trade_env=SIMULATE (paper).
-REAL money additionally requires typing 'TRADE REAL' at startup.
 """
 
 from __future__ import annotations
@@ -22,8 +24,7 @@ from datetime import date, timedelta
 
 from .config import load_config
 from .data import QuoteClient
-from .executor import Executor, OrderRefused
-from .notify import emit, format_ticket, suggested_side
+from .notify import emit, format_ticket
 from .signals import detect_signals, get_closed_bars
 
 
@@ -54,7 +55,7 @@ def _synthetic_bars_rsi() -> list[dict]:
 
 
 def dry_run() -> int:
-    print("=== DRY RUN: synthetic data, no OpenD, no orders ===\n")
+    print("=== DRY RUN: synthetic data, no OpenD ===\n")
     cfg = {
         "use_ma_cross": True, "ma_fast": 5, "ma_slow": 20,
         "use_rsi": True, "rsi_period": 14,
@@ -69,21 +70,17 @@ def dry_run() -> int:
             print(f"(no signal for {symbol} on synthetic data)\n")
             continue
         for sig in sigs:
-            print(format_ticket(sig, qty=1, limit_price=sig["details"]["close"]))
-            print(f"[dry-run] would prompt: Type 'confirm' to place "
-                  f"{suggested_side(sig)} 1 x {symbol} — skipped in dry-run.\n")
+            print(format_ticket(sig) + "\n")
     print("=== DRY RUN OK ===")
     return 0
 
 
 # -------------------------------------------------------------------- live
 
-def scan_once(cfg: dict, quotes: QuoteClient, executor: Executor,
-              prompt_fn=input) -> int:
+def scan_once(cfg: dict, quotes: QuoteClient) -> int:
     """One pass over the watchlist. Returns number of signals found."""
     n_signals = 0
     strategy = cfg["strategy"]
-    qty = int(cfg["trade"].get("default_qty", 1))
     log_file = cfg["notify"].get("log_file", "signals.log")
 
     for symbol in cfg["symbols"]:
@@ -95,32 +92,17 @@ def scan_once(cfg: dict, quotes: QuoteClient, executor: Executor,
         closed = get_closed_bars(bars)
         for sig in detect_signals(symbol, closed, strategy):
             n_signals += 1
-            price = float(sig["details"]["close"])
-            emit(sig, log_file=log_file, qty=qty, limit_price=price)
-            side = suggested_side(sig)
-            answer = prompt_fn(
-                f"Type 'confirm' to place {side} {qty} x {symbol} "
-                f"limit @ {price:.2f} [{cfg['trade']['trade_env']}], Enter to skip: "
-            ).strip()
-            if answer != "confirm":
-                print("skipped.\n")
-                continue
-            try:
-                result = executor.place_limit_order(symbol, side, qty, price)
-                print(f"order placed: {result}\n")
-            except OrderRefused as e:
-                print(f"ORDER REFUSED: {e}\n")
-            except Exception as e:  # noqa: BLE001
-                print(f"order failed: {e}\n")
+            emit(sig, log_file=log_file)
     return n_signals
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Semi-auto trading assistant (moomoo OpenAPI).")
+    ap = argparse.ArgumentParser(
+        description="Signal scanner (moomoo OpenAPI). Read-only: prints signal tickets, never trades.")
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--once", action="store_true", help="single scan pass, then exit")
     ap.add_argument("--dry-run", action="store_true",
-                    help="synthetic data, no OpenD, no orders")
+                    help="synthetic data, no OpenD connection")
     args = ap.parse_args(argv)
 
     if args.dry_run:
@@ -128,23 +110,12 @@ def main(argv: list[str] | None = None) -> int:
 
     cfg = load_config(args.config)
     opend = cfg["opend"]
-    trade_env = cfg["trade"]["trade_env"]
-
-    allow_real = False
-    if trade_env == "REAL":
-        print("⚠️  config requests REAL-MONEY trading.")
-        if input("Type 'TRADE REAL' to arm real orders, anything else aborts: ").strip() != "TRADE REAL":
-            print("aborted.")
-            return 1
-        allow_real = True
 
     print(f"Connecting to OpenD at {opend['host']}:{opend['port']} ...")
     quotes = QuoteClient(opend["host"], opend["port"])
-    executor = Executor(opend["host"], opend["port"], trade_env,
-                        password=cfg["trade"].get("password"), allow_real=allow_real)
     try:
         while True:
-            n = scan_once(cfg, quotes, executor)
+            n = scan_once(cfg, quotes)
             print(f"scan done: {n} signal(s).")
             if args.once:
                 break
@@ -155,7 +126,6 @@ def main(argv: list[str] | None = None) -> int:
         print("\nstopped.")
     finally:
         quotes.close()
-        executor.close()
     return 0
 
 
