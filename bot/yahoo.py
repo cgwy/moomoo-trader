@@ -30,7 +30,13 @@ def _range_for(history_days: int) -> str:
         return "6mo"
     if history_days <= 400:
         return "1y"
-    return "2y"
+    if history_days <= 800:
+        return "2y"
+    if history_days <= 2000:
+        return "5y"
+    if history_days <= 4000:
+        return "10y"
+    return "max"
 
 
 class YahooClient:

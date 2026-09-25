@@ -10,6 +10,9 @@ DEFAULTS = {
     "opend": {"host": "127.0.0.1", "port": 11111},
     "symbols": [],
     "strategy": {
+        # "breakout" (default): low-frequency confluence strategy (~1-3
+        #   trades/year/ticker). "classic": MA cross + RSI signals.
+        "preset": "breakout",
         "use_ma_cross": True,
         "ma_fast": 5,
         "ma_slow": 20,
@@ -17,8 +20,19 @@ DEFAULTS = {
         "rsi_period": 14,
         "rsi_overbought": 70,
         "rsi_oversold": 30,
+        "breakout": {
+            "breakout_n": 100,   # new N-day high triggers entry
+            "trend_sma": 200,    # only trade above the long-term trend
+            "volume_n": 20,
+            "adx_period": 14,
+            "adx_min": 20.0,     # trend strength, not chop
+            "atr_period": 14,
+            "atr_mult": 2.5,     # trailing stop distance
+            "cooldown_days": 60, # min days between exit and next entry
+            "state_file": "positions.json",
+        },
     },
-    "scan": {"poll_interval_minutes": 60, "history_days": 120},
+    "scan": {"poll_interval_minutes": 60, "history_days": 400},
     "notify": {"log_file": "signals.log"},
 }
 

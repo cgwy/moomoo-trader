@@ -19,6 +19,11 @@ symbols:
   - US.MSFT
 
 strategy:
+  # "breakout" (default): low-frequency confluence — 100d breakout + above
+  #   SMA200 + ADX trend strength, with 100d-low / SMA200 /
+  #   ATR trailing-stop exits. ~1-3 round trips/year per ticker (see backtest).
+  # "classic": MA golden/death cross + RSI zone entries (more frequent).
+  preset: "breakout"
   use_ma_cross: true
   ma_fast: 5
   ma_slow: 20
@@ -26,13 +31,29 @@ strategy:
   rsi_period: 14
   rsi_overbought: 70
   rsi_oversold: 30
-  # Signals are detected on the last CLOSED daily bar only (no repainting).
+  breakout:
+    breakout_n: 100
+    trend_sma: 200
+    volume_n: 20
+    adx_period: 14
+    adx_min: 20.0
+    atr_period: 14
+    atr_mult: 2.5
+    cooldown_days: 60
+    state_file: "positions.json"   # live position store (gitignored)
+    # Conviction filters (wired next): insider Form 4 net buying (SEC EDGAR,
+    # free) vetoes entries on net insider selling; short interest shown as
+    # positioning context on tickets.
+    # insider:
+    #   window_days: 90
+    #   veto_on_net_selling: true
 
 scan:
   # Minutes between full watchlist scans.
   poll_interval_minutes: 60
-  # How far back to pull daily K-lines for indicator warmup.
-  history_days: 120
+  # How far back to pull daily bars. The breakout preset needs 200+ bars for
+  # SMA(200); 400 is a comfortable warmup for both presets.
+  history_days: 400
 
 notify:
   log_file: "signals.log"

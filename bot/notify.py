@@ -15,6 +15,8 @@ TYPE_LABEL = {
     "ma_death_cross": "MA DEATH CROSS (fast crossed below slow)",
     "rsi_oversold": "RSI ENTERED OVERSOLD (crossed down through line)",
     "rsi_overbought": "RSI ENTERED OVERBOUGHT (crossed up through line)",
+    "breakout_entry": "BREAKOUT ENTRY (new high + trend + volume + ADX)",
+    "breakout_exit": "BREAKOUT EXIT",
 }
 
 DIRECTION_EMOJI = {"bullish": "🟢", "bearish": "🔴"}
@@ -37,6 +39,17 @@ def format_ticket(signal: dict) -> str:
                      f" (prev {d.get('ma_fast_prev')} / {d.get('ma_slow_prev')})".ljust(59) + "│")
     if signal["type"].startswith("rsi_"):
         lines.append(f"│ RSI({d.get('rsi_period')}): {d.get('rsi')} (prev {d.get('rsi_prev')})".ljust(59) + "│")
+    if signal["type"] == "breakout_entry":
+        n = next((k for k in d if k.startswith("prev_") and k.endswith("d_high")), None)
+        sma_k = next((k for k in d if k.startswith("sma_")), None)
+        adx_k = next((k for k in d if k.startswith("adx_")), None)
+        lines.append(f"│ prev high : {d.get(n)}   SMA: {d.get(sma_k)}".ljust(59) + "│")
+        lines.append(f"│ volume x  : {d.get('volume_ratio')}   ADX: {d.get(adx_k)}".ljust(59) + "│")
+    if signal["type"] == "breakout_exit":
+        lines.append(f"│ entry     : {d.get('entry_date')} @ {d.get('entry_price')}  "
+                     f"PnL {d.get('pnl_pct')}%".ljust(59) + "│")
+        for r in d.get("reasons", []):
+            lines.append(f"│ - {r}".ljust(59) + "│")
     lines.append("└" + "─" * 58 + "┘")
     return "\n".join(lines)
 

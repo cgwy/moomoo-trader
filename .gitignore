@@ -2,6 +2,8 @@
 config.yaml
 .env
 *.log
+positions.json
+.cache/
 
 # OpenD binary (large, platform-specific; see OPEND_SETUP.md)
 /opend/

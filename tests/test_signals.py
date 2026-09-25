@@ -169,3 +169,113 @@ def test_ma_and_rsi_can_fire_together():
     sigs = detect_signals("US.VOO", make_bars([20, 18, 16, 14, 12, 11, 24]), cfg)
     types = {s["type"] for s in sigs}
     assert "ma_golden_cross" in types  # RSI may or may not also fire; MA must
+
+
+# ------------------------------------------------- breakout strategy tests
+
+from bot.signals import (adx, atr, breakout_entry_signal,
+                         breakout_exit_signal)
+
+
+def make_ohlc(closes, vol=1000.0):
+    """OHLC bars with a small fixed daily range around each close."""
+    return [{"date": f"2020-01-{(i % 28) + 1:02d}", "close": c,
+             "high": c * 1.005, "low": c * 0.995, "volume": vol}
+            for i, c in enumerate(closes)]
+
+
+BCFG = {"breakout_n": 20, "trend_sma": 30, "volume_n": 10,
+        "adx_period": 10, "adx_min": 15.0, "atr_period": 10, "atr_mult": 2.5}
+
+
+def test_atr_flat_market():
+    bars = make_ohlc([100.0] * 30)
+    a = atr(bars, 10)
+    assert a[10] is not None
+    # TR each day ~= 1% of 100 -> ATR ~= 1.0
+    assert abs(a[-1] - 1.0) < 0.05
+
+
+def test_adx_trend_vs_chop():
+    import random
+    trend = make_ohlc([100 + i for i in range(60)])          # steady climb
+    rng = random.Random(42)
+    closes = [100.0]
+    for _ in range(59):  # random walk: no persistent direction
+        closes.append(closes[-1] + rng.uniform(-1.5, 1.5))
+    chop = make_ohlc(closes)
+    a_trend = adx(trend, 10)[-1]
+    a_chop = adx(chop, 10)[-1]
+    assert a_trend is not None and a_chop is not None
+    assert 0 <= a_chop <= 100 and 0 <= a_trend <= 100
+    assert a_trend > 50 and a_chop < 40  # strong trend reads much higher
+
+
+def test_breakout_entry_fires():
+    # 40 flat days, then a jump on big volume in an uptrend
+    closes = [100.0] * 40 + [100 + i * 0.5 for i in range(1, 15)] + [112.0]
+    bars = make_ohlc(closes)
+    bars[-1]["volume"] = 10000.0  # 10x spike
+    sig = breakout_entry_signal("US.VOO", bars, BCFG)
+    assert sig is not None
+    assert sig["type"] == "breakout_entry" and sig["direction"] == "bullish"
+    assert sig["details"]["volume_ratio"] > 1.5
+
+
+def test_breakout_entry_edge_triggered_once():
+    # ramp into the breakout so ADX is elevated; volume spikes on both bars
+    closes = [100.0] * 40 + [100 + i * 0.5 for i in range(1, 15)] + [112.0, 113.0]
+    bars = make_ohlc(closes)
+    bars[-2]["volume"] = 10000.0
+    bars[-1]["volume"] = 10000.0
+    first = breakout_entry_signal("US.VOO", bars[:-1], BCFG)
+    second = breakout_entry_signal("US.VOO", bars, BCFG)
+    assert first is not None and second is None  # no repeat ticket
+
+
+def test_breakout_entry_vetoed_below_trend():
+    # breakout after a long decline: still below SMA(30)
+    closes = [200 - i * 2 for i in range(40)] + [115.0]
+    bars = make_ohlc(closes)
+    bars[-1]["volume"] = 10000.0
+    assert breakout_entry_signal("US.VOO", bars, BCFG) is None
+
+
+def test_breakout_entry_reports_volume_context():
+    # volume is context on the ticket now, not a veto: flat volume still fires
+    closes = [100.0] * 40 + [100 + i * 0.5 for i in range(1, 15)] + [112.0]
+    bars = make_ohlc(closes)  # volume flat at 1000 -> ratio 1.0
+    sig = breakout_entry_signal("US.VOO", bars, BCFG)
+    assert sig is not None
+    assert sig["details"]["volume_ratio"] == 1.0
+    assert "context only" in sig["details"]["volume_note"]
+
+
+def test_breakout_exit_trailing_stop():
+    closes = [100 + i * 0.5 for i in range(50)]  # uptrend
+    bars = make_ohlc(closes)
+    pos = {"entry_date": "2020-01-01", "entry_price": 100.0, "peak": 124.0}
+    # now crash 10%: trailing stop = 124 - 2.5*ATR(~1.2) >> current
+    crash = make_ohlc([110.0, 105.0, 100.0])
+    all_bars = bars + crash
+    sig = breakout_exit_signal("US.VOO", all_bars, pos, BCFG)
+    assert sig is not None
+    assert sig["type"] == "breakout_exit"
+    assert any("trailing stop" in r for r in sig["details"]["reasons"])
+    assert sig["details"]["pnl_pct"] == 0.0  # exited flat vs 100 entry
+
+
+def test_breakout_exit_below_trend():
+    closes = [150.0] * 40 + [140.0]  # sudden drop below SMA(30)~149
+    bars = make_ohlc(closes)
+    pos = {"entry_date": "2020-01-01", "entry_price": 120.0, "peak": 150.0}
+    sig = breakout_exit_signal("US.VOO", bars, pos, BCFG)
+    assert sig is not None
+    assert any("SMA" in r for r in sig["details"]["reasons"])
+
+
+def test_breakout_no_exit_while_healthy():
+    closes = [100 + i * 0.5 for i in range(50)] + [124.5, 125.0]
+    bars = make_ohlc(closes)
+    pos = {"entry_date": "2020-01-01", "entry_price": 100.0, "peak": 120.0}
+    assert breakout_exit_signal("US.VOO", bars, pos, BCFG) is None

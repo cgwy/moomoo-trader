@@ -25,7 +25,9 @@ from datetime import date, timedelta
 from .config import load_config
 from .data import QuoteClient
 from .notify import emit, format_ticket
-from .signals import detect_signals, get_closed_bars
+from .signals import (breakout_entry_signal, breakout_exit_signal,
+                      detect_signals, get_closed_bars)
+from .state import load as load_state, save as save_state
 from .yahoo import YahooClient
 
 
@@ -91,6 +93,64 @@ def make_client(cfg):
 
 def scan_once(cfg: dict, quotes) -> int:
     """One pass over the watchlist. Returns number of signals found."""
+    if cfg["strategy"].get("preset", "breakout") == "breakout":
+        return scan_breakout(cfg, quotes)
+    return scan_classic(cfg, quotes)
+
+
+def scan_breakout(cfg: dict, quotes) -> int:
+    """Confluence breakout scan with persistent positions (see bot/state.py)."""
+    from datetime import date as date_cls
+
+    bcfg = cfg["strategy"]["breakout"]
+    log_file = cfg["notify"].get("log_file", "signals.log")
+    state_file = bcfg.get("state_file", "positions.json")
+    state = load_state(state_file)
+    positions = state["positions"]
+    last_exit = state["last_exit"]
+    cooldown = int(bcfg.get("cooldown_days", 60))
+    need = max(int(bcfg.get("breakout_n", 100)) + 2,
+               int(bcfg.get("trend_sma", 200)),
+               2 * int(bcfg.get("adx_period", 14)) + 1)
+    history_days = max(cfg["scan"].get("history_days", 400), need)
+    n_signals = 0
+
+    for symbol in cfg["symbols"]:
+        try:
+            bars = quotes.get_daily_klines(symbol, history_days)
+        except Exception as e:  # noqa: BLE001 - keep scanning other symbols
+            print(f"[{symbol}] data error: {e}", file=sys.stderr)
+            continue
+        closed = get_closed_bars(bars)
+        if not closed:
+            continue
+        today = str(closed[-1]["date"])[:10]
+        pos = positions.get(symbol)
+        if pos is not None:
+            sig = breakout_exit_signal(symbol, closed, pos, bcfg)
+            if sig:
+                n_signals += 1
+                emit(sig, log_file=log_file)
+                del positions[symbol]
+                last_exit[symbol] = today
+        else:
+            le = last_exit.get(symbol)
+            if le and (date_cls.fromisoformat(today)
+                       - date_cls.fromisoformat(le)).days < cooldown:
+                continue
+            sig = breakout_entry_signal(symbol, closed, bcfg)
+            if sig:
+                n_signals += 1
+                emit(sig, log_file=log_file)
+                px = float(closed[-1]["close"])
+                positions[symbol] = {"entry_date": today,
+                                     "entry_price": px, "peak": px}
+    save_state(state_file, state)
+    return n_signals
+
+
+def scan_classic(cfg: dict, quotes) -> int:
+    """Original MA-cross + RSI scan (stateless)."""
     n_signals = 0
     strategy = cfg["strategy"]
     log_file = cfg["notify"].get("log_file", "signals.log")
