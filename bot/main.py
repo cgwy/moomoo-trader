@@ -23,6 +23,7 @@ import time
 from datetime import date, timedelta
 
 from .config import load_config
+from .conviction import check_conviction
 from .data import QuoteClient
 from .notify import emit, format_ticket
 from .signals import (breakout_entry_signal, breakout_exit_signal,
@@ -140,6 +141,15 @@ def scan_breakout(cfg: dict, quotes) -> int:
                 continue
             sig = breakout_entry_signal(symbol, closed, bcfg)
             if sig:
+                # conviction layer: insider veto + short-interest context
+                conv = check_conviction(symbol, bcfg)
+                if conv["notes"]:
+                    sig.setdefault("details", {})["conviction_notes"] = conv["notes"]
+                if conv["details"]:
+                    sig["details"].update(conv["details"])
+                if conv["vetoed"]:
+                    print(f"[{symbol}] entry vetoed: {conv['veto_reason']}")
+                    continue
                 n_signals += 1
                 emit(sig, log_file=log_file)
                 px = float(closed[-1]["close"])

@@ -30,7 +30,6 @@ _HEADERS = {"User-Agent": _UA}
 
 _TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 _SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
-_FILING_INDEX_URL = "https://www.sec.gov/Archives/edgar/data/{cik}/{nodash}/index.json"
 
 _CACHE_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", ".cache",
@@ -156,25 +155,36 @@ def _recent_form4(cik: int, cutoff: date) -> list[tuple[str, str]]:
 # ------------------------------------------------------------ filing XML doc
 
 def _fetch_form4_xml(cik: int, accession: str, primary_doc: str) -> str:
+    """Fetch a filing's primary Form 4 XML.
+
+    Tries the primary-document path from the submissions feed directly first
+    (it often lives in a subdirectory like ``xslF345X06/form4.xml``), then
+    falls back to index.json discovery. Only returns content that actually
+    looks like an ownership document.
+    """
     nodash = accession.replace("-", "")
-    resp = requests.get(
-        _FILING_INDEX_URL.format(cik=cik, nodash=nodash),
-        headers=_HEADERS, timeout=30)
-    resp.raise_for_status()
-    items = resp.json().get("directory", {}).get("item", [])
-    xmls = [it for it in items
-            if str(it.get("name", "")).lower().endswith(".xml")]
-    if not xmls:
-        raise RuntimeError(f"no XML doc in filing {accession}")
-    doc = next((it for it in xmls if it.get("name") == primary_doc), None)
-    if doc is None:
-        # Fall back to the largest XML (the R-viewer files are tiny).
-        doc = max(xmls, key=lambda it: int(it.get("size", 0) or 0))
-    doc_url = (f"https://www.sec.gov/Archives/edgar/data/{cik}/"
-               f"{nodash}/{doc['name']}")
-    resp = requests.get(doc_url, headers=_HEADERS, timeout=30)
-    resp.raise_for_status()
-    return resp.text
+    base = f"https://www.sec.gov/Archives/edgar/data/{cik}/{nodash}"
+    urls: list[str] = []
+    if primary_doc:
+        urls.append(f"{base}/{primary_doc}")
+    try:
+        resp = requests.get(base + "/index.json", headers=_HEADERS, timeout=30)
+        resp.raise_for_status()
+        items = resp.json().get("directory", {}).get("item", [])
+        for it in items:
+            name = str(it.get("name", ""))
+            if name.lower().endswith(".xml") and f"{base}/{name}" not in urls:
+                urls.append(f"{base}/{name}")
+    except Exception:
+        pass  # index.json is only a backup; the direct path may still work
+    for url in urls:
+        try:
+            resp = requests.get(url, headers=_HEADERS, timeout=30)
+        except Exception:
+            continue
+        if resp.status_code == 200 and "ownershipDocument" in resp.text:
+            return resp.text
+    raise RuntimeError(f"no Form 4 XML doc retrievable for filing {accession}")
 
 
 # ------------------------------------------------------------------ XML parse

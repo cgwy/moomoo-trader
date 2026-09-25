@@ -30,6 +30,18 @@ DEFAULTS = {
             "atr_mult": 2.5,     # trailing stop distance
             "cooldown_days": 60, # min days between exit and next entry
             "state_file": "positions.json",
+            # Conviction layer (bot/conviction.py): insider Form 4 (SEC EDGAR,
+            # free, no key) vetoes entries on material net insider selling;
+            # short interest (Nasdaq, free) is shown as context on tickets.
+            # Fail-open: if a source is unreachable, the signal still fires
+            # and the ticket notes the missing data.
+            "insider": {
+                "window_days": 90,
+                "veto_on_net_selling": True,
+                # veto only when net selling exceeds this (routine
+                # diversification sales shouldn't kill a breakout)
+                "min_net_sell_usd": 1_000_000,
+            },
         },
     },
     "scan": {"poll_interval_minutes": 60, "history_days": 400},

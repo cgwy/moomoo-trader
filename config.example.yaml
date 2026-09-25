@@ -41,12 +41,15 @@ strategy:
     atr_mult: 2.5
     cooldown_days: 60
     state_file: "positions.json"   # live position store (gitignored)
-    # Conviction filters (wired next): insider Form 4 net buying (SEC EDGAR,
-    # free) vetoes entries on net insider selling; short interest shown as
-    # positioning context on tickets.
-    # insider:
-    #   window_days: 90
-    #   veto_on_net_selling: true
+    # Conviction layer (bot/conviction.py): insider Form 4 (SEC EDGAR, free,
+    # no key) vetoes entries on material net insider selling; short interest
+    # (Nasdaq, free) is shown as positioning context on tickets. Fail-open:
+    # if a source is unreachable, the signal still fires and the ticket notes
+    # the missing data.
+    insider:
+      window_days: 90
+      veto_on_net_selling: true
+      min_net_sell_usd: 1000000   # routine diversification sales don't veto
 
 scan:
   # Minutes between full watchlist scans.
